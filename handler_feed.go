@@ -52,27 +52,30 @@ func printFeed(feed database.Feed, user database.User) {
 	fmt.Printf("* Name:          %s\n", feed.Name)
 	fmt.Printf("* URL:           %s\n", feed.Url)
 	fmt.Printf("* User:          %s\n", user.Name)
+	fmt.Printf("* LastFetchedAt: %v\n", feed.LastFetchedAt.Time)
 }
 
 func handlerListFeeds(s *state, cmd command) error {
 	feeds, err := s.db.GetFeeds(context.Background())
 	if err != nil {
-		return err
+		return fmt.Errorf("couldn't get feeds: %w", err)
 	}
-	fmt.Println("Feeds:")
+
+	if len(feeds) == 0 {
+		fmt.Println("No feeds found.")
+		return nil
+	}
+
+	fmt.Printf("Found %d feeds:\n", len(feeds))
 	for _, feed := range feeds {
-		userName, err := s.db.GetUserName(context.Background(), feed.UserID)
+		user, err := s.db.GetUserById(context.Background(), feed.UserID)
 		if err != nil {
-			return err
+			return fmt.Errorf("couldn't get user: %w", err)
 		}
-		fmt.Printf("* ID:            %s\n", feed.ID)
-		fmt.Printf("* Created:       %v\n", feed.CreatedAt)
-		fmt.Printf("* Updated:       %v\n", feed.UpdatedAt)
-		fmt.Printf("* Name:          %s\n", feed.Name)
-		fmt.Printf("* URL:           %s\n", feed.Url)
-		fmt.Printf("* UserID:        %s\n", userName)
+		printFeed(feed, user)
+		fmt.Println("=====================================")
 	}
-	fmt.Println("=====================================")
+
 	return nil
 }
 
@@ -122,4 +125,25 @@ func handlerListFeedFollows(s *state, cmd command, user database.User) error {
 func printFeedFollow(username, feedname string) {
 	fmt.Printf("* User:          %s\n", username)
 	fmt.Printf("* Feed:          %s\n", feedname)
+}
+
+func handlerDeleteFeedFollow(s *state, cmd command, user database.User) error {
+	if len(cmd.Args) != 1 {
+		return fmt.Errorf("usage: %s <feedURL>", cmd.Name)
+	}
+	feedURL := cmd.Args[0]
+	feed, err := s.db.GetFeedByURL(context.Background(), feedURL)
+	if err != nil {
+		return err
+	}
+	err = s.db.DeleteFeedFollow(context.Background(), database.DeleteFeedFollowParams{
+		UserID: user.ID,
+		FeedID: feed.ID,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Feed: %s\n", feed.Name)
+	fmt.Printf("Unfollowed by: %s\n", s.cfg.CurrentUserName)
+	return nil
 }
